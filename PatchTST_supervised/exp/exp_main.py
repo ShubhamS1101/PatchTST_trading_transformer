@@ -15,7 +15,6 @@ import time
 
 import warnings
 import matplotlib.pyplot as plt
-import numpy as np
 
 warnings.filterwarnings('ignore')
 
@@ -312,13 +311,34 @@ class Exp_Main(Exp_Basic):
         # np.save(folder_path + 'x.npy', inputx)
         return
 
-    def predict(self, setting, load=False):
+    def predict(self, setting=None, load=True):
+        """
+        Run prediction on custom/pred data.
+        Args:
+            setting (str): checkpoint folder name. If None, automatically pick latest.
+            load (bool): whether to load model from checkpoint
+        """
         pred_data, pred_loader = self._get_data(flag='pred')
 
         if load:
+            # Determine checkpoint folder
+            if setting is None:
+                # pick the latest folder that starts with model_id
+                all_runs = sorted([d for d in os.listdir(self.args.checkpoints)
+                                   if d.startswith(self.args.model_id)])
+                if not all_runs:
+                    raise FileNotFoundError(f"No checkpoint folders found in {self.args.checkpoints}")
+                setting = all_runs[-1]  # latest checkpoint folder
+                print(f"[Predict] Auto-picked checkpoint: {setting}")
+
             path = os.path.join(self.args.checkpoints, setting)
-            best_model_path = path + '/' + 'checkpoint.pth'
+            best_model_path = os.path.join(path, 'checkpoint.pth')
+
+            if not os.path.exists(best_model_path):
+                raise FileNotFoundError(f"Checkpoint file not found: {best_model_path}")
+
             self.model.load_state_dict(torch.load(best_model_path))
+            print(f"[Predict] Loaded model from {best_model_path}")
 
         preds = []
 
@@ -331,9 +351,10 @@ class Exp_Main(Exp_Basic):
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
                 # decoder input
-                dec_inp = torch.zeros([batch_y.shape[0], self.args.pred_len, batch_y.shape[2]]).float().to(batch_y.device)
+                dec_inp = torch.zeros([batch_y.shape[0], self.args.pred_len, batch_y.shape[2]]).float().to(self.device)
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                # encoder - decoder
+
+                # encoder-decoder
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         if 'Linear' in self.args.model or 'TST' in self.args.model:
@@ -351,17 +372,17 @@ class Exp_Main(Exp_Basic):
                             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
                         else:
                             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                pred = outputs.detach().cpu().numpy()  # .squeeze()
+
+                pred = outputs.detach().cpu().numpy()
                 preds.append(pred)
 
         preds = np.array(preds)
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
 
-        # result save
-        folder_path = './results/' + setting + '/'
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
+        # save results
+        folder_path = os.path.join('./results', setting)
+        os.makedirs(folder_path, exist_ok=True)
+        np.save(os.path.join(folder_path, 'real_prediction.npy'), preds)
 
-        np.save(folder_path + 'real_prediction.npy', preds)
-
-        return
+        print(f"[Predict] Saved predictions to {folder_path}/real_prediction.npy")
+        return preds
