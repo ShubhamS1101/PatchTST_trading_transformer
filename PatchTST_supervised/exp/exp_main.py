@@ -220,10 +220,8 @@ class Exp_Main(Exp_Basic):
         
         if test:
             print('loading model')
-            ckpt_path = os.path.join(self.args.checkpoints, setting, 'checkpoint.pth')
-            print("DEBUG: Loading checkpoint from", ckpt_path)
-            self.model.load_state_dict(torch.load(ckpt_path))
-           # self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+            self.model.load_state_dict(torch.load(os.path.join(self.args.checkpoints, setting, 'checkpoint.pth')))
+
 
         preds = []
         trues = []
